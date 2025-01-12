@@ -1,47 +1,27 @@
+extern crate csv;
 use reqwest::{self, Response};
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 
-pub enum HostingService {
-    CLOUDFLARE,
-    CLOUDFRONT,
-    FIREBASE,
-    VERCEL,
-    NETLIFY,
+const SETTINGS_CSV_PATH: &str = "./settings.csv";
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Destination {
+    name: String,
+    url: String,
+    header_cache_key: String,
+    header_cache_hit_value: String,
 }
 
-impl HostingService {
-    fn cache_header_name(&self) -> &'static str {
-        match self {
-            HostingService::CLOUDFLARE => "cf-cache-status",
-            HostingService::CLOUDFRONT => "x-cache",
-            HostingService::FIREBASE => "",
-            HostingService::VERCEL => "",
-            HostingService::NETLIFY => "",
-        }
+fn read_settings() -> Result<Vec<Destination>, csv::Error> {
+    let mut reader =
+        csv::Reader::from_path(SETTINGS_CSV_PATH).expect("the setting file is not found");
+    let mut list = Vec::<Destination>::new();
+    for row in reader.deserialize() {
+        let data: Destination = row?;
+        list.push(data);
     }
-
-    fn cache_header_value_hit(&self) -> &'static str {
-        match self {
-            HostingService::CLOUDFLARE => "HIT",
-            HostingService::CLOUDFRONT => "Hit from cloudfront",
-            HostingService::FIREBASE => "",
-            HostingService::VERCEL => "",
-            HostingService::NETLIFY => "",
-        }
-    }
-}
-
-impl std::fmt::Display for HostingService {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match *self {
-            Self::CLOUDFLARE => "CLOUDFLARE",
-            Self::CLOUDFRONT => "CLOUDFRONT",
-            Self::FIREBASE => "FIREBASE",
-            Self::VERCEL => "VERCEL",
-            Self::NETLIFY => "NETLIFY",
-        };
-        write!(f, "{}", s)
-    }
+    Ok(list)
 }
 
 fn display_headers(response: &Response) {
@@ -55,23 +35,24 @@ fn display_headers(response: &Response) {
     }
 }
 
-fn is_cache_hit(response: &Response, hosting_service: &HostingService) -> bool {
-    println!(
-        "service: {}, header name: {}",
-        hosting_service,
-        hosting_service.cache_header_name()
-    );
-    match response
-        .headers()
-        .get(hosting_service.cache_header_name())
-        .expect("header key is not contained")
-        .to_str()
-    {
-        Ok(v) => v == hosting_service.cache_header_value_hit(),
-        Err(_) => {
+fn is_cache_hit(
+    response: &Response,
+    header_cache_key: &String,
+    expected_header_cache_hit_value: &String,
+) -> bool {
+    match response.headers().get(header_cache_key) {
+        Some(v) => {
+            let actual_header_value = v.to_str().expect("header value cannot be converted to str");
             println!(
-                "header {} cannot be obtained",
-                hosting_service.cache_header_name()
+                "====\nKey: {}\nExpected value: {}\nActual value: {}\n====",
+                header_cache_key, expected_header_cache_hit_value, actual_header_value
+            );
+            actual_header_value == expected_header_cache_hit_value
+        }
+        None => {
+            println!(
+                "====\nKey: {}\nExpected value: {}\n====",
+                header_cache_key, expected_header_cache_hit_value,
             );
             false
         }
@@ -80,24 +61,33 @@ fn is_cache_hit(response: &Response, hosting_service: &HostingService) -> bool {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // URLを指定
-    let url = "https://www.example.com";
+    // CSVから設定を読み込み
+    let destinations = read_settings().unwrap();
 
     // クライアントを作成
     let client = reqwest::Client::new();
 
-    // GETリクエストを送信
-    let response = client.get(url).send().await.expect("GET request is failed");
+    for destination in destinations {
+        println!("======== Send GET request: {destination:?} ========");
 
-    // ステータスコードを表示
-    println!("Status: {}", response.status());
+        // URLを指定
+        let url = destination.url;
 
-    // キャッシュヒットの有無を表示
-    let cache_hit = is_cache_hit(&response, &HostingService::CLOUDFRONT);
-    println!("cache hit: {}", cache_hit);
+        // GETリクエストを送信
+        let response = client.get(url).send().await.expect("GET request is failed");
 
-    // レスポンスヘッダーを表示
-    display_headers(&response);
+        // ステータスコードを表示
+        println!("Status: {}", response.status());
+
+        // キャッシュヒットの有無を表示
+        let header_cache_key: String = destination.header_cache_key;
+        let header_cache_hit_value: String = destination.header_cache_hit_value;
+        let cache_hit = is_cache_hit(&response, &header_cache_key, &header_cache_hit_value);
+        println!("cache hit: {}", cache_hit);
+
+        // レスポンスヘッダーを表示
+        // display_headers(&response);
+    }
 
     Ok(())
 }
