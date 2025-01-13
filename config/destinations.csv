@@ -1,0 +1,3 @@
+name,url,header_cache_key,header_cache_hit_value
+CloudFront (example),"https://cloudfront.example.com/",x-cache,"Hit from cloudfront"
+Cloudflare (example),"https://cloudflare.example.com/",cf-cache-status,HIT
