@@ -156,13 +156,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         result_for_destination.insert(RESULT_MISS_KEY, Vec::new());
 
         for _ in 0..50 {
+            let request_client = client
+                .get(&destination.url)
+                .header(reqwest::header::ACCEPT_ENCODING, "gzip, deflate, br")
+                .header(reqwest::header::ACCEPT_LANGUAGE, "ja,ja-JP")
+                .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
             let start = Instant::now();
             // GETリクエストを送信
-            let response = client
-                .get(&destination.url)
-                .send()
-                .await
-                .expect("GET request is failed");
+            let response = request_client.send().await.expect("GET request is failed");
             let duration = start.elapsed();
 
             thread::sleep(time::Duration::from_millis(50));
