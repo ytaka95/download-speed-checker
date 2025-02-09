@@ -22,8 +22,14 @@ fn read_settings() -> Result<Vec<Destination>, csv::Error> {
         csv::Reader::from_path(SETTINGS_CSV_PATH).expect("the setting file is not found");
     let mut list = Vec::<Destination>::new();
     for row in reader.deserialize() {
-        let data = row?;
-        list.push(data);
+        let data: Destination = row?;
+        if let Some(first_char) = data.name.chars().next() {
+            if first_char == '#' {
+                println!("skip destination \"{}\"", data.name);
+            } else {
+                list.push(data);
+            }
+        }
     }
     Ok(list)
 }
